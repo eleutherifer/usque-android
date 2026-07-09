@@ -15,8 +15,9 @@ type Config struct {
 	PrivateKey     string `json:"private_key"`      // Base64-encoded ECDSA private key
 	EndpointV4     string `json:"endpoint_v4"`      // IPv4 address of the endpoint
 	EndpointV6     string `json:"endpoint_v6"`      // IPv6 address of the endpoint
+	EndpointH2V4   string `json:"endpoint_h2_v4"`   // IPv4 address used in HTTP/2 mode
+	EndpointH2V6   string `json:"endpoint_h2_v6"`   // IPv6 address used in HTTP/2 mode
 	EndpointPubKey string `json:"endpoint_pub_key"` // PEM-encoded ECDSA public key of the endpoint to verify against
-	License        string `json:"license"`          // Application license key
 	ID             string `json:"id"`               // Device unique identifier
 	AccessToken    string `json:"access_token"`     // Authentication token for API access
 	IPv4           string `json:"ipv4"`             // Assigned IPv4 address
@@ -41,7 +42,7 @@ func LoadConfig(configPath string) error {
 	if err != nil {
 		return fmt.Errorf("failed to open config file: %v", err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	decoder := json.NewDecoder(file)
 	if err := decoder.Decode(&AppConfig); err != nil {
@@ -65,7 +66,7 @@ func (*Config) SaveConfig(configPath string) error {
 	if err != nil {
 		return fmt.Errorf("failed to create config file: %v", err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	encoder := json.NewEncoder(file)
 	encoder.SetIndent("", "  ")
