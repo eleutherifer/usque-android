@@ -83,20 +83,20 @@ func Register(configPath string, deviceName string) string {
 		return fmt.Sprintf("Failed to generate key pair: %v", err)
 	}
 
-	updatedAccountData, apiErr, err := api.EnrollKey(accountData, pubKey, deviceName)
-	if err != nil {
-		if apiErr != nil {
-			return fmt.Sprintf("Failed to enroll key: %v (API: %s)", err, apiErr.ErrorsAsString("; "))
-		}
-		return fmt.Sprintf("Failed to enroll key: %v", err)
-	}
+	updatedAccountData, err := api.EnrollKey(accountData.ID, accountData.Token, pubKey, deviceName)
+    if err != nil {
 
+
+
+		return fmt.Sprintf("Failed to enroll key: %v", err)
+    }
+	
 	config.AppConfig = config.Config{
 		PrivateKey:     base64.StdEncoding.EncodeToString(privKey),
 		EndpointV4:     updatedAccountData.Config.Peers[0].Endpoint.V4[:len(updatedAccountData.Config.Peers[0].Endpoint.V4)-2],
 		EndpointV6:     updatedAccountData.Config.Peers[0].Endpoint.V6[1 : len(updatedAccountData.Config.Peers[0].Endpoint.V6)-3],
 		EndpointPubKey: updatedAccountData.Config.Peers[0].PublicKey,
-		License:        updatedAccountData.Account.License,
+
 		ID:             updatedAccountData.ID,
 		AccessToken:    accountData.Token,
 		IPv4:           updatedAccountData.Config.Interface.Addresses.V4,
@@ -232,7 +232,7 @@ func StartTunnel(configPath string, tunFd int, mtu int, packetFlow PacketFlow, c
 		sni = internal.ConnectSNI
 	}
 	log.Printf("Using SNI: %s", sni)
-	tlsConfig, err := api.PrepareTlsConfig(privKey, peerPubKey, cert, sni)
+	tlsConfig, err := api.PrepareTlsConfig(privKey, peerPubKey, cert, sni, false)
 	if err != nil {
 		return fmt.Sprintf("Failed to prepare TLS: %v", err)
 	}
@@ -286,7 +286,15 @@ func StartTunnel(configPath string, tunFd int, mtu int, packetFlow PacketFlow, c
 			}
 		}()
 
-		api.MaintainTunnel(ctx, tlsConfig, 30*time.Second, 1242, endpoint, tunDevice, mtu, time.Second)
+        api.MaintainTunnel(ctx, api.MaintainTunnelConfig{
+            TLSConfig:         tlsConfig,
+            KeepalivePeriod:   30 * time.Second,
+            InitialPacketSize: 1242,
+            Endpoint:          endpoint,
+            Device:            tunDevice,
+            MTU:               mtu,
+            ReconnectDelay:    time.Second,
+        })
 
 		// Tunnel exited
 		log.Println("MASQUE tunnel exited")
