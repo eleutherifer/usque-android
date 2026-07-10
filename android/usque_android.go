@@ -54,8 +54,9 @@ var state = &tunnelState{}
 
 // Custom connection options
 var (
-	customSNI      = "www.visa.cn" // Default SNI for censorship circumvention
-	customEndpoint = ""            // Custom endpoint with port, e.g. "162.159.198.2:443" or "[2606:4700:103::]:1701"
+	customSNI      = "apteka.ru" // Default SNI for censorship circumvention
+	customEndpoint = ""          // Custom endpoint with port, e.g. "162.159.198.2:443" or "[2606:4700:103::]:2408"
+	useHTTP2       = false       // Use TCP+HTTP/2 transport instead of QUIC/HTTP-3 (needs endpoint_h2_v4/v6 in config.json)
 )
 
 // Register creates a new Cloudflare WARP account and saves the configuration.
@@ -243,26 +244,29 @@ func StartTunnel(configPath string, tunFd int, mtu int, packetFlow PacketFlow, c
 		return fmt.Sprintf("Failed to create TUN device: %v", err)
 	}
 
-	// Endpoint - use custom endpoint if set, otherwise use config default
-	var endpoint *net.UDPAddr
+	// Endpoint — свой, если задан, иначе SelectEndpointFromConfig сам решит,
+	// какое поле конфига брать (endpoint_v4/v6 для QUIC, endpoint_h2_v4/v6 для HTTP/2).
+	var endpoint net.Addr
 	if customEndpoint != "" {
 		// Parse custom endpoint (supports host:port format)
 		host, port, err := parseEndpoint(customEndpoint)
 		if err != nil {
 			return fmt.Sprintf("Invalid custom endpoint '%s': %v", customEndpoint, err)
 		}
-		endpoint = &net.UDPAddr{
-			IP:   net.ParseIP(host),
-			Port: port,
+		if useHTTP2 {
+			endpoint = &net.TCPAddr{IP: net.ParseIP(host), Port: port}
+		} else {
+			endpoint = &net.UDPAddr{IP: net.ParseIP(host), Port: port}
 		}
-		log.Printf("Using custom endpoint: %s:%d", host, port)
+		log.Printf("Using custom endpoint: %s:%d (http2=%v)", host, port, useHTTP2)
 	} else {
+		var err error
 		// Use default from config (IPv4)
-		endpoint = &net.UDPAddr{
-			IP:   net.ParseIP(config.AppConfig.EndpointV4),
-			Port: 443,
+		endpoint, err = config.SelectEndpointFromConfig(useHTTP2, false, 443)
+		if err != nil {
+			return fmt.Sprintf("Failed to select endpoint: %v", err)
 		}
-		log.Printf("Using default endpoint: %s:443", config.AppConfig.EndpointV4)
+		log.Printf("Using endpoint from config: %s (http2=%v)", endpoint, useHTTP2)
 	}
 
 	// Create context for cancellation
@@ -294,6 +298,7 @@ func StartTunnel(configPath string, tunFd int, mtu int, packetFlow PacketFlow, c
             Device:            tunDevice,
             MTU:               mtu,
             ReconnectDelay:    time.Second,
+            UseHTTP2:          useHTTP2,
         })
 
 		// Tunnel exited
@@ -360,12 +365,12 @@ func IsRunning() bool {
 
 // GetVersion returns the library version
 func GetVersion() string {
-	return "1.0.3-android"
+	return "1.0.4-android"
 }
 
 // parseEndpoint parses an endpoint string in the format:
 // - "host:port" for IPv4 (e.g., "162.159.198.2:443")
-// - "[host]:port" for IPv6 (e.g., "[2606:4700:103::]:1701")
+// - "[host]:port" for IPv6 (e.g., "[2606:4700:103::]:2408")
 // - "host" without port (defaults to 443)
 func parseEndpoint(endpoint string) (string, int, error) {
 	// Check if it's an IPv6 address with brackets
@@ -428,7 +433,7 @@ func parseEndpoint(endpoint string) (string, int, error) {
 
 // SetSNI sets a custom SNI for the TLS connection.
 // This can help with censorship circumvention.
-// Default is "www.visa.cn". Pass empty string to use Cloudflare's default.
+// Default is "apteka.ru". Pass empty string to use Cloudflare's default.
 func SetSNI(sni string) {
 	customSNI = sni
 	log.Printf("SNI set to: %s", sni)
@@ -442,9 +447,9 @@ func GetSNI() string {
 // SetEndpoint sets a custom endpoint for the MASQUE connection.
 // Supports the following formats:
 //   - "162.159.198.2" (IPv4, default port 443)
-//   - "162.159.198.2:1701" (IPv4 with custom port)
+//   - "162.159.198.2:2408" (IPv4 with custom port)
 //   - "[2606:4700:103::]" (IPv6, default port 443)
-//   - "[2606:4700:103::]:1701" (IPv6 with custom port)
+//   - "[2606:4700:103::]:2408" (IPv6 with custom port)
 //
 // Pass empty string to use the default endpoint from config.json.
 func SetEndpoint(endpoint string) {
@@ -465,10 +470,23 @@ func GetDefaultEndpoint(configPath string) string {
 	return ""
 }
 
+// SetUseHttp2 включает TCP+HTTP/2-транспорт вместо QUIC/HTTP-3 — полезно,
+// когда QUIC/UDP заблокирован на уровне сети. Использует endpoint_h2_v4/
+// endpoint_h2_v6 из config.json (если не заданы — дефолт 162.159.198.2).
+func SetUseHttp2(enabled bool) {
+	useHTTP2 = enabled
+	log.Printf("HTTP/2 transport set to: %v", enabled)
+}
+
+func GetUseHttp2() bool {
+	return useHTTP2
+}
+
 // ResetConnectionOptions resets all connection options to defaults
 func ResetConnectionOptions() {
-	customSNI = "www.visa.cn"
+	customSNI = "apteka.ru"
 	customEndpoint = ""
+	useHTTP2 = false
 	log.Println("Connection options reset to defaults")
 }
 

@@ -65,7 +65,7 @@ class MainActivity : Activity() {
 
     private fun loadSavedSettings() {
         // Load SNI
-        val savedSni = prefs.getString(KEY_SNI, "www.visa.cn") ?: "www.visa.cn"
+        val savedSni = prefs.getString(KEY_SNI, "apteka.ru") ?: "apteka.ru"
         Usqueandroid.setSNI(savedSni)
         
         // Load endpoint
@@ -120,7 +120,7 @@ class MainActivity : Activity() {
             .setNegativeButton("Cancel", null)
             .setNeutralButton("Reset") { _, _ ->
                 // Reset to defaults
-                saveSettings("www.visa.cn", "")
+                saveSettings("apteka.ru", "")
                 Usqueandroid.resetConnectionOptions()
                 Toast.makeText(this, "Settings reset to defaults", Toast.LENGTH_SHORT).show()
                 updateUI()
@@ -200,7 +200,7 @@ class MainActivity : Activity() {
         }
         
         // Show current settings (from prefs for persistence)
-        val currentSni = prefs.getString(KEY_SNI, Usqueandroid.getSNI()) ?: "www.visa.cn"
+        val currentSni = prefs.getString(KEY_SNI, Usqueandroid.getSNI()) ?: "apteka.ru"
         sniText.text = "SNI: $currentSni"
         
         val currentEndpoint = prefs.getString(KEY_ENDPOINT, "") ?: ""
