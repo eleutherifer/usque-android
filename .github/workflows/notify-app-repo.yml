@@ -1,0 +1,17 @@
+name: Notify app repo of changes
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger rebuild in usque-android-app-ru
+        env:
+          GH_TOKEN: ${{ secrets.APP_REPO_DISPATCH_TOKEN }}
+        run: |
+          gh api repos/eleutherifer/usque-android-app-ru/dispatches \
+            -f event_type=usque-source-updated \
+            -f "client_payload[sha]=${{ github.sha }}"
