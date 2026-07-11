@@ -180,6 +180,13 @@ type MaintainTunnelConfig struct {
 	// parent process env for OnConnect / OnDisconnect invocations. USQUE_EVENT
 	// and USQUE_ENDPOINT are set by MaintainTunnel itself.
 	HookEnv map[string]string
+		// OnConnectFunc, если задан, вызывается сразу после реального успешного
+	// подключения — в дополнение к OnConnect (не вместо). В отличие от
+	// OnConnect (внешний exec), это настоящий Go-колбэк — то, что нужно для
+	// встраивания библиотеки в другое приложение (например, Android-биндинги).
+	OnConnectFunc func()
+	// OnDisconnectFunc — то же самое для обрыва, с реальной ошибкой обрыва.
+	OnDisconnectFunc func(error)
 }
 
 // cloneHookEnv returns a shallow copy of src so concurrent hook invocations
@@ -301,7 +308,10 @@ func MaintainTunnel(ctx context.Context, cfg MaintainTunnelConfig) {
 			env["USQUE_ENDPOINT"] = cfg.Endpoint.String()
 			RunHook(cfg.OnConnect, env)
 		}
-
+		if cfg.OnConnectFunc != nil {
+			cfg.OnConnectFunc()
+		}
+		
 		errChan := make(chan error, 2)
 		pumpCtx, cancelPumps := context.WithCancel(ctx)
 		var wg sync.WaitGroup
@@ -384,7 +394,10 @@ func MaintainTunnel(ctx context.Context, cfg MaintainTunnelConfig) {
 			env["USQUE_ENDPOINT"] = cfg.Endpoint.String()
 			RunHook(cfg.OnDisconnect, env)
 		}
-
+		if cfg.OnDisconnectFunc != nil {
+			cfg.OnDisconnectFunc(err)
+		}
+		
 		cancelPumps()
 		_ = ipConn.Close()
 
