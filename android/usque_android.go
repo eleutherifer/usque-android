@@ -279,6 +279,7 @@ func StartTunnel(configPath string, tunFd int, mtu int, packetFlow PacketFlow, c
 	go func() {
 		log.Println("Starting MASQUE tunnel...")
 
+/*
 		// Notify connected after a brief delay for connection establishment
 		go func() {
 			time.Sleep(3 * time.Second)
@@ -289,8 +290,9 @@ func StartTunnel(configPath string, tunFd int, mtu int, packetFlow PacketFlow, c
 				callback.OnConnected()
 			}
 		}()
+*/
 
-        api.MaintainTunnel(ctx, api.MaintainTunnelConfig{
+		api.MaintainTunnel(ctx, api.MaintainTunnelConfig{
             TLSConfig:         tlsConfig,
             KeepalivePeriod:   30 * time.Second,
             InitialPacketSize: 1242,
@@ -299,8 +301,22 @@ func StartTunnel(configPath string, tunFd int, mtu int, packetFlow PacketFlow, c
             MTU:               mtu,
             ReconnectDelay:    time.Second,
             UseHTTP2:          useHTTP2,
+            OnConnectFunc: func() {
+                if callback != nil {
+                    callback.OnConnected()
+                }
+            },
+            OnDisconnectFunc: func(err error) {
+                if callback != nil {
+                    reason := "tunnel disconnected"
+                    if err != nil {
+                        reason = err.Error()
+                    }
+                    callback.OnError(reason)
+                }
+            },
         })
-
+		
 		// Tunnel exited
 		log.Println("MASQUE tunnel exited")
 		tunDevice.Close()
