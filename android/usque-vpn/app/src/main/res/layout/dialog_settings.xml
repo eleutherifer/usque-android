@@ -18,7 +18,7 @@
         android:id="@+id/sni_input"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:hint="apteka.ru"
+        android:hint="my.mail.ru"
         android:inputType="textUri"
         android:layout_marginBottom="16dp" />
 
