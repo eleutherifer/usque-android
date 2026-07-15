@@ -178,9 +178,10 @@ func (d *AndroidTunDevice) WritePacket(pkt []byte) error {
 }
 
 func (d *AndroidTunDevice) Close() error {
-	if d.file != nil {
-		return d.file.Close()
-	}
+	// Дескриптор закрывает исключительно Kotlin-сторона (через Os.close(),
+	// с учётом fdsan) — здесь закрытие на уровне ОС не делаем, чтобы не было
+	// двойного закрытия. Блокирующие Read/Write сами разблокируются с ошибкой,
+	// когда Kotlin реально закроет fd — этого достаточно для остановки цикла.
 	return nil
 }
 
