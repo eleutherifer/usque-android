@@ -247,9 +247,11 @@ func StartTunnel(configPath string, tunFd int, mtu int, packetFlow PacketFlow, c
 
 	// Endpoint — свой, если задан, иначе SelectEndpointFromConfig сам решит,
 	// какое поле конфига брать (endpoint_v4/v6 для QUIC, endpoint_h2_v4/v6 для HTTP/2).
-	var endpoint net.Addr
-	if customEndpoint != "" {
-		// Parse custom endpoint (supports host:port format)
+    var endpoint net.Addr
+    if customEndpoint != "" && !useHTTP2 {
+        // Кастомный endpoint из UI относится только к QUIC-режиму — тот же IP
+        // не гарантированно принимает TCP+HTTP/2, поэтому для HTTP/2 всегда
+        // используем endpoint_h2_v4/v6 (с фолбэком внутри SelectEndpointFromConfig).		// Parse custom endpoint (supports host:port format)
 		host, port, err := parseEndpoint(customEndpoint)
 		if err != nil {
 			return fmt.Sprintf("Invalid custom endpoint '%s': %v", customEndpoint, err)
