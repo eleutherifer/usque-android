@@ -280,6 +280,7 @@ func StartTunnel(configPath string, tunFd int, mtu int, packetFlow PacketFlow, c
 
 	// Start tunnel maintenance in background
 	go func() {
+        var lastReportedConnected int32 = -1 // -1 = ещё неизвестно, 0 = не подключено, 1 = подключено
 		log.Println("Starting MASQUE tunnel...")
 
 /*
@@ -305,19 +306,19 @@ func StartTunnel(configPath string, tunFd int, mtu int, packetFlow PacketFlow, c
             ReconnectDelay:    time.Second,
             UseHTTP2:          useHTTP2,
             OnConnectFunc: func() {
-                if callback != nil {
+                if atomic.SwapInt32(&lastReportedConnected, 1) != 1 && callback != nil {
                     callback.OnConnected()
                 }
             },
             OnDisconnectFunc: func(err error) {
-                if callback != nil {
+                if atomic.SwapInt32(&lastReportedConnected, 0) != 0 && callback != nil {
                     reason := "tunnel disconnected"
                     if err != nil {
                         reason = err.Error()
                     }
                     callback.OnError(reason)
                 }
-            },
+            },	
         })
 		
 		// Tunnel exited
