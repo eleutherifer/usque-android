@@ -16,6 +16,7 @@ import (
 	"os"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/Diniboy1123/usque/api"
