@@ -60,6 +60,8 @@ var (
 	useHTTP2       = false       // Use TCP+HTTP/2 transport instead of QUIC/HTTP-3 (needs endpoint_h2_v4/v6 in config.json)
 )
 
+var currentSessionID int64 = 0
+
 // Register creates a new Cloudflare WARP account and saves the configuration.
 // This should be called once before starting the VPN.
 //
@@ -206,6 +208,8 @@ func StartTunnel(configPath string, tunFd int, mtu int, packetFlow PacketFlow, c
 		return "Tunnel is already running"
 	}
 
+    mySessionID := atomic.AddInt64(&currentSessionID, 1)
+
 	log.Printf("StartTunnel called: configPath=%s, tunFd=%d, mtu=%d", configPath, tunFd, mtu)
 
 	// Load config
@@ -306,20 +310,26 @@ func StartTunnel(configPath string, tunFd int, mtu int, packetFlow PacketFlow, c
             MTU:               mtu,
             ReconnectDelay:    time.Second,
             UseHTTP2:          useHTTP2,
-            OnConnectFunc: func() {
-                if atomic.SwapInt32(&lastReportedConnected, 1) != 1 && callback != nil {
-                    callback.OnConnected()
-                }
-            },
-            OnDisconnectFunc: func(err error) {
-                if atomic.SwapInt32(&lastReportedConnected, 0) != 0 && callback != nil {
-                    reason := "tunnel disconnected"
-                    if err != nil {
-                        reason = err.Error()
-                    }
-                    callback.OnError(reason)
-                }
-            },	
+			OnConnectFunc: func() {
+    			if atomic.LoadInt64(&currentSessionID) != mySessionID {
+        			return
+    			}
+    			if atomic.SwapInt32(&lastReportedConnected, 1) != 1 && callback != nil {
+        			callback.OnConnected()
+    			}
+			},
+			OnDisconnectFunc: func(err error) {
+    			if atomic.LoadInt64(&currentSessionID) != mySessionID {
+        			return
+    			}
+			    if atomic.SwapInt32(&lastReportedConnected, 0) != 0 && callback != nil {
+        			reason := "tunnel disconnected"
+			        if err != nil {
+            			reason = err.Error()
+			        }
+			        callback.OnError(reason)
+			    }
+			},
         })
 		
 		// Tunnel exited
@@ -330,8 +340,8 @@ func StartTunnel(configPath string, tunFd int, mtu int, packetFlow PacketFlow, c
 		state.running = false
 		state.mu.Unlock()
 
-		if callback != nil {
-			callback.OnDisconnected("Tunnel closed")
+		if atomic.LoadInt64(&currentSessionID) == mySessionID && callback != nil {
+    		callback.OnDisconnected("Tunnel closed")
 		}
 	}()
 
