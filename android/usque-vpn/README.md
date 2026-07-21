@@ -52,7 +52,7 @@ Output: `app/build/outputs/apk/debug/app-debug.apk`
 
 | Option | Description | Default |
 |--------|-------------|---------|
-| SNI | Server Name Indication for TLS | `my.mail.ru` |
+| SNI | Server Name Indication for TLS | `apteka.ru` |
 | IPv4 Endpoint | WARP server IPv4 | From registration |
 | IPv6 Endpoint | WARP server IPv6 | From registration |
 | Use IPv6 | Connect via IPv6 endpoint | Off |

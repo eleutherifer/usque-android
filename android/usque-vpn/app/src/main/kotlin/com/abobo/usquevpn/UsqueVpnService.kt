@@ -87,7 +87,7 @@ class UsqueVpnService : VpnService() {
         // Create VPN interface
         try {
             val builder = Builder()
-                .setSession("Usque WARP VPN")
+                .setSession("Usque Ru WARP VPN")
                 .setMtu(1280)
                 
             // Add IPv4 address and route

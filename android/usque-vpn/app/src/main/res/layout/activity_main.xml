@@ -98,7 +98,7 @@
             android:id="@+id/sni_text"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="SNI: my.mail.ru"
+            android:text="SNI: apteka.ru"
             android:textSize="12sp"
             android:textColor="#aaaaaa" />
 
