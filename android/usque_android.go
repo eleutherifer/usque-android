@@ -499,11 +499,18 @@ func GetEndpoint() string {
 }
 
 // GetDefaultEndpoint returns the default endpoint from config (IPv4:443)
-func GetDefaultEndpoint(configPath string) string {
-	if err := config.LoadConfig(configPath); err == nil {
-		return config.AppConfig.EndpointV4 + ":443"
-	}
-	return ""
+func GetDefaultEndpoint(configPath string, http2 bool) string {
+    if err := config.LoadConfig(configPath); err != nil {
+        return ""
+    }
+    if http2 {
+        v4 := config.AppConfig.EndpointH2V4
+        if v4 == "" {
+            v4 = config.DefaultEndpointH2V4 // константа "162.159.198.2" из config/endpoints.go
+        }
+        return v4 + ":443"
+    }
+    return config.AppConfig.EndpointV4 + ":443"
 }
 
 // SetUseHttp2 включает TCP+HTTP/2-транспорт вместо QUIC/HTTP-3 — полезно,
