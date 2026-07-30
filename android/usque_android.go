@@ -258,29 +258,31 @@ func StartTunnel(configPath string, tunFd int, mtu int, packetFlow PacketFlow, c
 	// Endpoint — свой, если задан, иначе SelectEndpointFromConfig сам решит,
 	// какое поле конфига брать (endpoint_v4/v6 для QUIC, endpoint_h2_v4/v6 для HTTP/2).
     var endpoint net.Addr
-    if customEndpoint != "" && !useHTTP2 {
-        // Кастомный endpoint из UI относится только к QUIC-режиму — тот же IP
-        // не гарантированно принимает TCP+HTTP/2, поэтому для HTTP/2 всегда
-        // используем endpoint_h2_v4/v6 (с фолбэком внутри SelectEndpointFromConfig).		// Parse custom endpoint (supports host:port format)
-		host, port, err := parseEndpoint(customEndpoint)
-		if err != nil {
-			return fmt.Sprintf("Invalid custom endpoint '%s': %v", customEndpoint, err)
-		}
-		if useHTTP2 {
-			endpoint = &net.TCPAddr{IP: net.ParseIP(host), Port: port}
-		} else {
-			endpoint = &net.UDPAddr{IP: net.ParseIP(host), Port: port}
-		}
-		log.Printf("Using custom endpoint: %s:%d (http2=%v)", host, port, useHTTP2)
-	} else {
-		var err error
-		// Use default from config (IPv4)
-		endpoint, err = config.SelectEndpointFromConfig(useHTTP2, false, 443)
-		if err != nil {
-			return fmt.Sprintf("Failed to select endpoint: %v", err)
-		}
-		log.Printf("Using endpoint from config: %s (http2=%v)", endpoint, useHTTP2)
-	}
+    if customEndpoint != "" {
+        // Кастомный endpoint используется в обоих режимах — тип адреса ниже
+        // подбирается под useHTTP2, так что TCP/UDP не перепутаются.
+        host, port, err := parseEndpoint(customEndpoint)
+        if err != nil {
+            return fmt.Sprintf("Invalid custom endpoint '%s': %v", customEndpoint, err)
+        }
+        ip := net.ParseIP(host)
+        if ip == nil {
+            return fmt.Sprintf("Invalid custom endpoint IP '%s'", host)
+        }
+        if useHTTP2 {
+            endpoint = &net.TCPAddr{IP: ip, Port: port}
+        } else {
+            endpoint = &net.UDPAddr{IP: ip, Port: port}
+        }
+        log.Printf("Using custom endpoint: %s:%d (http2=%v)", host, port, useHTTP2)
+    } else {
+        var err error
+        endpoint, err = config.SelectEndpointFromConfig(useHTTP2, false, 443)
+        if err != nil {
+            return fmt.Sprintf("Failed to select endpoint: %v", err)
+        }
+        log.Printf("Using endpoint from config: %s (http2=%v)", endpoint, useHTTP2)
+    }
 
 	// Create context for cancellation
 	ctx, cancel := context.WithCancel(context.Background())
