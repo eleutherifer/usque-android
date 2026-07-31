@@ -17,6 +17,7 @@ import (
 	"strconv"
 	"sync"
 	"sync/atomic"
+    "syscall"
 	"time"
 
 	"github.com/Diniboy1123/usque/api"
@@ -135,62 +136,39 @@ func GetAssignedIPv6(configPath string) string {
 	return config.AppConfig.IPv6
 }
 
-// AndroidTunDevice wraps the Android TUN file descriptor for packet IO
+// fd читается/пишется напрямую системными вызовами, БЕЗ обёртки в os.File.
+// Это важно: у os.File есть автоматический финализатор, который рано или
+// поздно сам попытается закрыть номер fd — а к этому моменту тот же номер
+// может уже принадлежать другой, свежей VPN-сессии. Раз обёртки нет —
+// финализатору нечего закрывать, Go никогда не полезет сюда сам.
 type AndroidTunDevice struct {
-	fd       int
-	file     *os.File
-	mtu      int
-	inputCh  chan []byte
-	outputFn PacketFlow
+    fd       int
+    mtu      int
+    inputCh  chan []byte
+    outputFn PacketFlow
 }
 
-// NewAndroidTunDevice creates a new Android TUN device wrapper
 func newAndroidTunDevice(fd int, mtu int, packetFlow PacketFlow) (*AndroidTunDevice, error) {
-	// Create a file from the file descriptor
-	file := os.NewFile(uintptr(fd), "tun")
-	if file == nil {
-		return nil, fmt.Errorf("failed to create file from fd %d", fd)
-	}
-
-	return &AndroidTunDevice{
-		fd:       fd,
-		file:     file,
-		mtu:      mtu,
-		inputCh:  make(chan []byte, 256),
-		outputFn: packetFlow,
-	}, nil
+    return &AndroidTunDevice{fd: fd, mtu: mtu, inputCh: make(chan []byte, 256), outputFn: packetFlow}, nil
 }
 
 func (d *AndroidTunDevice) ReadPacket(buf []byte) (int, error) {
-	n, err := d.file.Read(buf)
-	if err != nil {
-		return 0, err
-	}
-	return n, nil
+    n, err := syscall.Read(d.fd, buf)
+    if err != nil { return 0, err }
+    return n, nil
 }
 
 func (d *AndroidTunDevice) WritePacket(pkt []byte) error {
-	if d.outputFn != nil {
-		// Use the callback to write to Android TUN
-		d.outputFn.WritePacket(pkt)
-		return nil
-	}
-	// Fallback to direct write
-	_, err := d.file.Write(pkt)
-	return err
+    if d.outputFn != nil { d.outputFn.WritePacket(pkt); return nil }
+    _, err := syscall.Write(d.fd, pkt)
+    return err
 }
 
 func (d *AndroidTunDevice) Close() error {
-	// Дескриптор закрывает исключительно Kotlin-сторона (через Os.close(),
-	// с учётом fdsan) — здесь закрытие на уровне ОС не делаем, чтобы не было
-	// двойного закрытия. Блокирующие Read/Write сами разблокируются с ошибкой,
-	// когда Kotlin реально закроет fd — этого достаточно для остановки цикла.
-//	if d.file != nil {
-//		return d.file.Close()
-//	}
-    // 2026.07.30 21:06: Возвращено закрытие.
-    // 2026.07.30 22:06: Снова убрано закрытие, т. к. лучше не стало, а возможно стало хуже.
-	return nil
+    // Ключ сдаёт только Kotlin (Os.close()), и это теперь безопасно:
+    // Go нигде не держит собственного объекта-обёртки над этим fd,
+    // значит и закрыть его «незаметно для себя» тоже не может.
+    return nil
 }
 
 // StartTunnel starts the VPN tunnel using the provided TUN file descriptor.
@@ -343,13 +321,15 @@ func StartTunnel(configPath string, tunFd int, mtu int, packetFlow PacketFlow, c
 		log.Println("MASQUE tunnel exited")
 		tunDevice.Close()
 
-		state.mu.Lock()
-		state.running = false
-		state.mu.Unlock()
+        state.mu.Lock()
+        if atomic.LoadInt64(&currentSessionID) == mySessionID {
+            state.running = false
+        }
+        state.mu.Unlock()
 
-		if atomic.LoadInt64(&currentSessionID) == mySessionID && callback != nil {
-    		callback.OnDisconnected("Tunnel closed")
-		}
+        if atomic.LoadInt64(&currentSessionID) == mySessionID && callback != nil {
+            callback.OnDisconnected("Tunnel closed")
+        }
 	}()
 
 	log.Println("Tunnel started successfully")
