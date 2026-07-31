@@ -17,7 +17,6 @@ import (
 	"strconv"
 	"sync"
 	"sync/atomic"
-    "syscall"
 	"time"
 
 	"github.com/Diniboy1123/usque/api"
@@ -143,31 +142,36 @@ func GetAssignedIPv6(configPath string) string {
 // финализатору нечего закрывать, Go никогда не полезет сюда сам.
 type AndroidTunDevice struct {
     fd       int
+    file     *os.File
     mtu      int
     inputCh  chan []byte
     outputFn PacketFlow
 }
 
 func newAndroidTunDevice(fd int, mtu int, packetFlow PacketFlow) (*AndroidTunDevice, error) {
-    return &AndroidTunDevice{fd: fd, mtu: mtu, inputCh: make(chan []byte, 256), outputFn: packetFlow}, nil
+    file := os.NewFile(uintptr(fd), "tun")
+    if file == nil {
+        return nil, fmt.Errorf("failed to create file from fd %d", fd)
+    }
+    return &AndroidTunDevice{fd: fd, file: file, mtu: mtu, inputCh: make(chan []byte, 256), outputFn: packetFlow}, nil
 }
 
 func (d *AndroidTunDevice) ReadPacket(buf []byte) (int, error) {
-    n, err := syscall.Read(d.fd, buf)
+    n, err := d.file.Read(buf)
     if err != nil { return 0, err }
     return n, nil
 }
 
 func (d *AndroidTunDevice) WritePacket(pkt []byte) error {
     if d.outputFn != nil { d.outputFn.WritePacket(pkt); return nil }
-    _, err := syscall.Write(d.fd, pkt)
+    _, err := d.file.Write(pkt)
     return err
 }
 
 func (d *AndroidTunDevice) Close() error {
-    // Ключ сдаёт только Kotlin (Os.close()), и это теперь безопасно:
-    // Go нигде не держит собственного объекта-обёртки над этим fd,
-    // значит и закрыть его «незаметно для себя» тоже не может.
+    if d.file != nil {
+        return d.file.Close()
+    }
     return nil
 }
 
