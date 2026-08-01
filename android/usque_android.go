@@ -89,9 +89,6 @@ func Register(configPath string, deviceName string) string {
 
 	updatedAccountData, err := api.EnrollKey(accountData.ID, accountData.Token, pubKey, deviceName)
     if err != nil {
-
-
-
 		return fmt.Sprintf("Failed to enroll key: %v", err)
     }
 	
@@ -540,14 +537,14 @@ func GetUseHttp2() bool {
 
 func GetLicenseKey(configPath string) string {
     if err := config.LoadConfig(configPath); err != nil { return "" }
-    account, err := api.GetAccount(config.AppConfig.Id, config.AppConfig.AccessToken)
+    account, err := api.GetAccount(config.AppConfig.ID, config.AppConfig.AccessToken)
     if err != nil { return "" }
     return account.License
 }
 
 func SetLicenseKey(configPath string, key string) string {
     if err := config.LoadConfig(configPath); err != nil { return err.Error() }
-    if err := api.UpdateLicenceKey(config.AppConfig.Id, config.AppConfig.AccessToken, key); err != nil {
+    if err := api.UpdateLicenceKey(config.AppConfig.ID, config.AppConfig.AccessToken, key); err != nil {
         return err.Error()
     }
     return ""
@@ -555,7 +552,7 @@ func SetLicenseKey(configPath string, key string) string {
 
 func RemoveLicenseKey(configPath string) string {
     if err := config.LoadConfig(configPath); err != nil { return err.Error() }
-    if err := api.DeleteLicenceKey(config.AppConfig.Id, config.AppConfig.AccessToken); err != nil {
+    if err := api.DeleteLicenceKey(config.AppConfig.ID, config.AppConfig.AccessToken); err != nil {
         return err.Error()
     }
     return ""
