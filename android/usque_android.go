@@ -538,6 +538,29 @@ func GetUseHttp2() bool {
 	return useHTTP2
 }
 
+func GetLicenseKey(configPath string) string {
+    if err := config.LoadConfig(configPath); err != nil { return "" }
+    account, err := api.GetAccount(config.AppConfig.Id, config.AppConfig.AccessToken)
+    if err != nil { return "" }
+    return account.License
+}
+
+func SetLicenseKey(configPath string, key string) string {
+    if err := config.LoadConfig(configPath); err != nil { return err.Error() }
+    if err := api.UpdateLicenceKey(config.AppConfig.Id, config.AppConfig.AccessToken, key); err != nil {
+        return err.Error()
+    }
+    return ""
+}
+
+func RemoveLicenseKey(configPath string) string {
+    if err := config.LoadConfig(configPath); err != nil { return err.Error() }
+    if err := api.DeleteLicenceKey(config.AppConfig.Id, config.AppConfig.AccessToken); err != nil {
+        return err.Error()
+    }
+    return ""
+}
+
 // ResetConnectionOptions resets all connection options to defaults
 func ResetConnectionOptions() {
 	customSNI = "cdnjs.cloudflare.com"
