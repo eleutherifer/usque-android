@@ -146,6 +146,7 @@ type AndroidTunDevice struct {
     mtu      int
     inputCh  chan []byte
     outputFn PacketFlow
+    stopCh   chan struct{}   // добавить
 }
 
 func newAndroidTunDevice(fd int, mtu int, packetFlow PacketFlow) (*AndroidTunDevice, error) {
@@ -153,13 +154,33 @@ func newAndroidTunDevice(fd int, mtu int, packetFlow PacketFlow) (*AndroidTunDev
     if file == nil {
         return nil, fmt.Errorf("failed to create file from fd %d", fd)
     }
-    return &AndroidTunDevice{fd: fd, file: file, mtu: mtu, inputCh: make(chan []byte, 256), outputFn: packetFlow}, nil
+    return &AndroidTunDevice{
+        fd: fd, file: file, mtu: mtu,
+        inputCh: make(chan []byte, 256), outputFn: packetFlow,
+        stopCh: make(chan struct{}),   // добавить
+    }, nil
 }
 
+// ReadPacket больше не полагается на то, что кто-то извне вовремя закроет
+// дескриптор. Читаем с таймаутом 150мс; если таймаут — проверяем stopCh и,
+// если пора остановиться, возвращаем ошибку сами, без чужой помощи.
 func (d *AndroidTunDevice) ReadPacket(buf []byte) (int, error) {
-    n, err := d.file.Read(buf)
-    if err != nil { return 0, err }
-    return n, nil
+    for {
+        d.file.SetReadDeadline(time.Now().Add(150 * time.Millisecond))
+        n, err := d.file.Read(buf)
+        if err == nil {
+            return n, nil
+        }
+        if os.IsTimeout(err) {
+            select {
+            case <-d.stopCh:
+                return 0, fmt.Errorf("tunnel stopping")
+            default:
+                continue
+            }
+        }
+        return 0, err
+    }
 }
 
 func (d *AndroidTunDevice) WritePacket(pkt []byte) error {
@@ -269,6 +290,12 @@ func StartTunnel(configPath string, tunFd int, mtu int, packetFlow PacketFlow, c
 	// Create context for cancellation
 	ctx, cancel := context.WithCancel(context.Background())
 	state.cancel = cancel
+
+    go func() {
+        <-ctx.Done()
+        close(tunDevice.stopCh)
+    }()
+
 	state.running = true
 	state.callback = callback
 
