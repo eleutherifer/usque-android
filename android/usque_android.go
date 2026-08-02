@@ -301,19 +301,6 @@ func StartTunnel(configPath string, tunFd int, mtu int, packetFlow PacketFlow, c
         var lastReportedConnected int32 = -1 // -1 = ещё неизвестно, 0 = не подключено, 1 = подключено
 		log.Println("Starting MASQUE tunnel...")
 
-/*
-		// Notify connected after a brief delay for connection establishment
-		go func() {
-			time.Sleep(3 * time.Second)
-			state.mu.Lock()
-			running := state.running
-			state.mu.Unlock()
-			if running && callback != nil {
-				callback.OnConnected()
-			}
-		}()
-*/
-
 		api.MaintainTunnel(ctx, api.MaintainTunnelConfig{
             TLSConfig:         tlsConfig,
             KeepalivePeriod:   30 * time.Second,
