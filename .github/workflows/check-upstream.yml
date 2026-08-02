@@ -1,0 +1,68 @@
+name: Check upstream (Diniboy1123/usque)
+
+on:
+  schedule:
+    - cron: '0 21 * * 0'   # каждый день 21:00 UTC
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Сравнить SHA апстрима с сохранённым
+        id: cmp
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          last_known=$(cat .github/upstream-sync.txt 2>/dev/null | tr -d '[:space:]')
+          latest=$(gh api repos/Diniboy1123/usque/commits/main --jq '.sha')
+          echo "latest=$latest" >> "$GITHUB_OUTPUT"
+          if [ "$last_known" = "$latest" ]; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "last_known=$last_known" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Уже есть открытый issue?
+        id: existing
+        if: steps.cmp.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          count=$(gh issue list --label upstream-sync --state open --json number --jq 'length')
+          echo "count=$count" >> "$GITHUB_OUTPUT"
+
+      - name: Список новых коммитов
+        id: commits
+        if: steps.cmp.outputs.changed == 'true' && steps.existing.outputs.count == '0'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          range="${{ steps.cmp.outputs.last_known }}...${{ steps.cmp.outputs.latest }}"
+          body=$(gh api "repos/Diniboy1123/usque/compare/$range" --jq '.commits[] | "- [" + (.sha[0:7]) + "](" + .html_url + ") " + (.commit.message | split("\n")[0])')
+          {
+            echo 'body<<EOF'
+            echo "$body"
+            echo 'EOF'
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Создать issue
+        if: steps.cmp.outputs.changed == 'true' && steps.existing.outputs.count == '0'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh issue create \
+            --title "Апстрим usque обновился: ${{ steps.cmp.outputs.latest }}" \
+            --label upstream-sync \
+            --body "Новые коммиты в https://github.com/Diniboy1123/usque, которых ещё нет в этом форке:
+
+          ${{ steps.commits.outputs.body }}
+
+          После переноса нужного вручную — обнови \`.github/upstream-sync.txt\` на \`${{ steps.cmp.outputs.latest }}\` и закрой issue."
