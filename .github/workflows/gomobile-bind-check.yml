@@ -1,0 +1,28 @@
+name: gomobile bind check
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  android-bind-smoke-test:
+    name: gomobile bind smoke test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: android-actions/setup-android@v3
+      - name: Install gomobile
+        run: |
+          go install golang.org/x/mobile/cmd/gomobile@latest
+          gomobile init
+      - name: gomobile bind (smoke test, только arm64 для скорости)
+        run: |
+          gomobile bind -v -target=android/arm64 -androidapi 24 \
+            -o /tmp/usque-smoke.aar github.com/Diniboy1123/usque/android
