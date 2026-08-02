@@ -275,6 +275,7 @@ func UpdateLicenceKey(deviceId string, deviceToken string, licenceKey string) er
 	}
 	defer func() { _ = resp.Body.Close() }()
 
+/*
 	if resp.StatusCode != http.StatusOK {
 		var apiErr models.APIError
 		if err := json.NewDecoder(resp.Body).Decode(&apiErr); err != nil {
@@ -282,6 +283,14 @@ func UpdateLicenceKey(deviceId string, deviceToken string, licenceKey string) er
 		}
 		return &apiErr
 	}
+*/
+    if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+        var apiErr models.APIError
+        if err := json.NewDecoder(resp.Body).Decode(&apiErr); err != nil {
+            return fmt.Errorf("request failed with HTTP %d, and could not parse error body: %v", resp.StatusCode, err)
+        }
+        return &apiErr
+    }
 
 	return nil
 }
@@ -315,6 +324,7 @@ func DeleteLicenceKey(deviceId string, deviceToken string) error {
 	}
 	defer func() { _ = resp.Body.Close() }()
 
+/*
 	if resp.StatusCode != http.StatusOK {
 		var apiErr models.APIError
 		if err := json.NewDecoder(resp.Body).Decode(&apiErr); err != nil {
@@ -322,6 +332,14 @@ func DeleteLicenceKey(deviceId string, deviceToken string) error {
 		}
 		return &apiErr
 	}
+*/
+    if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+        var apiErr models.APIError
+        if err := json.NewDecoder(resp.Body).Decode(&apiErr); err != nil {
+            return fmt.Errorf("request failed with HTTP %d, and could not parse error body: %v", resp.StatusCode, err)
+        }
+        return &apiErr
+    }
 
 	return nil
 }
