@@ -39,6 +39,11 @@ jobs:
       - name: Test
         run: go test ./...
 
+      - name: Test (race detector)
+        env:
+          CGO_ENABLED: "1"
+        run: go test -race ./...
+
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v8
         with:
