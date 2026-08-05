@@ -158,6 +158,16 @@ func newAndroidTunDevice(fd int, mtu int, packetFlow PacketFlow) (*AndroidTunDev
     }, nil
 }
 
+// 2026.08.05 12:51 Откат ReadPacket
+func (d *AndroidTunDevice) ReadPacket(buf []byte) (int, error) {
+	n, err := d.file.Read(buf)
+	if err != nil {
+		return 0, err
+	}
+	return n, nil
+}
+
+/*
 // ReadPacket больше не полагается на то, что кто-то извне вовремя закроет
 // дескриптор. Читаем с таймаутом 150мс; если таймаут — проверяем stopCh и,
 // если пора остановиться, возвращаем ошибку сами, без чужой помощи.
@@ -179,6 +189,7 @@ func (d *AndroidTunDevice) ReadPacket(buf []byte) (int, error) {
         return 0, err
     }
 }
+*/
 
 func (d *AndroidTunDevice) WritePacket(pkt []byte) error {
     if d.outputFn != nil { d.outputFn.WritePacket(pkt); return nil }
@@ -266,6 +277,7 @@ func StartTunnel(configPath string, tunFd int, mtu int, packetFlow PacketFlow, c
             return fmt.Sprintf("Invalid custom endpoint '%s': %v", customEndpoint, err)
         }
         ip := net.ParseIP(host)
+		
         if ip == nil {
             return fmt.Sprintf("Invalid custom endpoint IP '%s'", host)
         }
