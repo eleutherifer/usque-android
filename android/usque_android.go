@@ -313,7 +313,7 @@ func StartTunnel(configPath string, tunFd int, mtu int, packetFlow PacketFlow, c
         var lastReportedConnected int32 = -1 // -1 = ещё неизвестно, 0 = не подключено, 1 = подключено
 		log.Println("Starting MASQUE tunnel...")
 
-		api.MaintainTunnel(ctx, api.MaintainTunnelConfig{
+        api.MaintainTunnel(ctx, api.MaintainTunnelConfig{
             TLSConfig:         tlsConfig,
             KeepalivePeriod:   30 * time.Second,
             InitialPacketSize: 1242,
@@ -322,6 +322,7 @@ func StartTunnel(configPath string, tunFd int, mtu int, packetFlow PacketFlow, c
             MTU:               mtu,
             ReconnectDelay:    time.Second,
             UseHTTP2:          useHTTP2,
+            AlwaysReconnect:   true,
 			OnConnectFunc: func() {
     			if atomic.LoadInt64(&currentSessionID) != mySessionID {
         			return
