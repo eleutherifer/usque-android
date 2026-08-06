@@ -15,6 +15,7 @@ import (
 	"net"
 	"os"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -163,6 +164,68 @@ var (
 	tunReadBytes  int64
 	tunWriteCount int64
 	tunWriteBytes int64
+
+	packetSamplesMu sync.Mutex
+	packetSamples   []string
+)
+
+const packetSampleLimit = 20
+
+func addPacketSample(dir string, b []byte) {
+	packetSamplesMu.Lock()
+	defer packetSamplesMu.Unlock()
+	if len(packetSamples) >= packetSampleLimit*2 {
+		return
+	}
+	packetSamples = append(packetSamples, dir+" "+packetSummary(b))
+}
+
+func packetSummary(b []byte) string {
+	if len(b) < 1 {
+		return "empty"
+	}
+	ver := b[0] >> 4
+	switch ver {
+	case 4:
+		if len(b) < 20 {
+			return "v4 short"
+		}
+		proto := b[9]
+		src := net.IP(b[12:16]).String()
+		dst := net.IP(b[16:20]).String()
+		sport, dport := 0, 0
+		ihl := int(b[0]&0x0f) * 4
+		if (proto == 6 || proto == 17) && len(b) >= ihl+4 {
+			sport = int(b[ihl])<<8 | int(b[ihl+1])
+			dport = int(b[ihl+2])<<8 | int(b[ihl+3])
+		}
+		return fmt.Sprintf("v4 proto=%d %s:%d -> %s:%d len=%d", proto, src, sport, dst, dport, len(b))
+	case 6:
+		if len(b) < 40 {
+			return "v6 short"
+		}
+		proto := b[6]
+		src := net.IP(b[8:24]).String()
+		dst := net.IP(b[24:40]).String()
+		return fmt.Sprintf("v6 proto=%d %s -> %s len=%d", proto, src, dst, len(b))
+	default:
+		return fmt.Sprintf("unknown ver=%d len=%d", ver, len(b))
+	}
+}
+
+// GetPacketSamples возвращает разбор первых ~20 пакетов в каждую сторону —
+// протокол, откуда, куда. Для диагностики маршрутизации.
+func GetPacketSamples() string {
+	packetSamplesMu.Lock()
+	defer packetSamplesMu.Unlock()
+	return strings.Join(packetSamples, "\n")
+}
+
+var (
+	tunReadCount  int64
+	tunReadBytes  int64
+	tunWriteCount int64
+	tunWriteBytes int64
 )
 
 // 2026.08.05 12:51 Откат ReadPacket
@@ -171,8 +234,11 @@ func (d *AndroidTunDevice) ReadPacket(buf []byte) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	atomic.AddInt64(&tunReadCount, 1)
+	c := atomic.AddInt64(&tunReadCount, 1)
 	atomic.AddInt64(&tunReadBytes, int64(n))
+	if c <= packetSampleLimit {
+		addPacketSample("OUT", buf[:n])
+	}
 	return n, nil
 }
 
@@ -204,8 +270,11 @@ func (d *AndroidTunDevice) WritePacket(pkt []byte) error {
     if d.outputFn != nil { d.outputFn.WritePacket(pkt); return nil }
     _, err := d.file.Write(pkt)
     if err == nil {
-        atomic.AddInt64(&tunWriteCount, 1)
+        c := atomic.AddInt64(&tunWriteCount, 1)
         atomic.AddInt64(&tunWriteBytes, int64(len(pkt)))
+        if c <= packetSampleLimit {
+            addPacketSample("IN ", pkt)
+        }
     }
     return err
 }
