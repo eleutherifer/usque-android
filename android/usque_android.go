@@ -158,12 +158,21 @@ func newAndroidTunDevice(fd int, mtu int, packetFlow PacketFlow) (*AndroidTunDev
     }, nil
 }
 
+var (
+	tunReadCount  int64
+	tunReadBytes  int64
+	tunWriteCount int64
+	tunWriteBytes int64
+)
+
 // 2026.08.05 12:51 Откат ReadPacket
 func (d *AndroidTunDevice) ReadPacket(buf []byte) (int, error) {
 	n, err := d.file.Read(buf)
 	if err != nil {
 		return 0, err
 	}
+	atomic.AddInt64(&tunReadCount, 1)
+	atomic.AddInt64(&tunReadBytes, int64(n))
 	return n, nil
 }
 
@@ -194,7 +203,19 @@ func (d *AndroidTunDevice) ReadPacket(buf []byte) (int, error) {
 func (d *AndroidTunDevice) WritePacket(pkt []byte) error {
     if d.outputFn != nil { d.outputFn.WritePacket(pkt); return nil }
     _, err := d.file.Write(pkt)
+    if err == nil {
+        atomic.AddInt64(&tunWriteCount, 1)
+        atomic.AddInt64(&tunWriteBytes, int64(len(pkt)))
+    }
     return err
+}
+
+// GetPacketStats возвращает счётчики трафика через TUN-устройство —
+// для диагностики ситуации "подключено, но трафик не идёт".
+func GetPacketStats() string {
+	return fmt.Sprintf("out(TUN->tunnel): %d pkt / %d B | in(tunnel->TUN): %d pkt / %d B",
+		atomic.LoadInt64(&tunReadCount), atomic.LoadInt64(&tunReadBytes),
+		atomic.LoadInt64(&tunWriteCount), atomic.LoadInt64(&tunWriteBytes))
 }
 
 func (d *AndroidTunDevice) Close() error {
