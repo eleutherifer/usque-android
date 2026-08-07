@@ -165,6 +165,9 @@ var (
 	tunWriteCount int64
 	tunWriteBytes int64
 
+	tunReadTCPCount  int64
+	tunWriteTCPCount int64
+
 	packetSamplesMu sync.Mutex
 	packetSamples   []string
 )
@@ -195,11 +198,15 @@ func packetSummary(b []byte) string {
 		dst := net.IP(b[16:20]).String()
 		sport, dport := 0, 0
 		ihl := int(b[0]&0x0f) * 4
+		flags := ""
 		if (proto == 6 || proto == 17) && len(b) >= ihl+4 {
 			sport = int(b[ihl])<<8 | int(b[ihl+1])
 			dport = int(b[ihl+2])<<8 | int(b[ihl+3])
 		}
-		return fmt.Sprintf("v4 proto=%d %s:%d -> %s:%d len=%d", proto, src, sport, dst, dport, len(b))
+		if proto == 6 && len(b) >= ihl+14 {
+			flags = " flags=" + tcpFlagsString(b[ihl+13])
+		}
+		return fmt.Sprintf("v4 proto=%d %s:%d -> %s:%d len=%d%s", proto, src, sport, dst, dport, len(b), flags)
 	case 6:
 		if len(b) < 40 {
 			return "v6 short"
@@ -207,10 +214,43 @@ func packetSummary(b []byte) string {
 		proto := b[6]
 		src := net.IP(b[8:24]).String()
 		dst := net.IP(b[24:40]).String()
-		return fmt.Sprintf("v6 proto=%d %s -> %s len=%d", proto, src, dst, len(b))
+		sport, dport := 0, 0
+		flags := ""
+		if (proto == 6 || proto == 17) && len(b) >= 44 {
+			sport = int(b[40])<<8 | int(b[41])
+			dport = int(b[42])<<8 | int(b[43])
+		}
+		if proto == 6 && len(b) >= 54 {
+			flags = " flags=" + tcpFlagsString(b[53])
+		}
+		return fmt.Sprintf("v6 proto=%d %s:%d -> %s:%d len=%d%s", proto, src, sport, dst, dport, len(b), flags)
 	default:
 		return fmt.Sprintf("unknown ver=%d len=%d", ver, len(b))
 	}
+}
+
+func tcpFlagsString(b byte) string {
+	var flags []string
+	if b&0x02 != 0 { flags = append(flags, "SYN") }
+	if b&0x10 != 0 { flags = append(flags, "ACK") }
+	if b&0x04 != 0 { flags = append(flags, "RST") }
+	if b&0x01 != 0 { flags = append(flags, "FIN") }
+	if b&0x08 != 0 { flags = append(flags, "PSH") }
+	if len(flags) == 0 { return "-" }
+	return strings.Join(flags, "|")
+}
+
+func isTCP(b []byte) bool {
+	if len(b) < 1 {
+		return false
+	}
+	switch b[0] >> 4 {
+	case 4:
+		return len(b) >= 10 && b[9] == 6
+	case 6:
+		return len(b) >= 7 && b[6] == 6
+	}
+	return false
 }
 
 // GetPacketSamples возвращает разбор первых ~20 пакетов в каждую сторону —
@@ -227,10 +267,13 @@ func (d *AndroidTunDevice) ReadPacket(buf []byte) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	c := atomic.AddInt64(&tunReadCount, 1)
+    atomic.AddInt64(&tunReadCount, 1)
 	atomic.AddInt64(&tunReadBytes, int64(n))
-	if c <= packetSampleLimit {
-		addPacketSample("OUT", buf[:n])
+	if isTCP(buf[:n]) {
+		c := atomic.AddInt64(&tunReadTCPCount, 1)
+		if c <= packetSampleLimit {
+			addPacketSample("OUT", buf[:n])
+		}
 	}
 	return n, nil
 }
@@ -263,10 +306,13 @@ func (d *AndroidTunDevice) WritePacket(pkt []byte) error {
     if d.outputFn != nil { d.outputFn.WritePacket(pkt); return nil }
     _, err := d.file.Write(pkt)
     if err == nil {
-        c := atomic.AddInt64(&tunWriteCount, 1)
+        atomic.AddInt64(&tunWriteCount, 1)
         atomic.AddInt64(&tunWriteBytes, int64(len(pkt)))
-        if c <= packetSampleLimit {
-            addPacketSample("IN ", pkt)
+        if isTCP(pkt) {
+            c := atomic.AddInt64(&tunWriteTCPCount, 1)
+            if c <= packetSampleLimit {
+                addPacketSample("IN ", pkt)
+            }
         }
     }
     return err
