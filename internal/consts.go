@@ -1,8 +1,7 @@
 package internal
 
 const (
-	ApiUrl     = "https://api.cloudflareclient.com"
-//    ApiUrl     = "https://api.devices.cloudflare.com"
+    ApiUrl     = "https://api.devices.cloudflare.com"
 	ApiVersion = "v0a4471"
 	ConnectSNI   = "consumer-masque.cloudflareclient.com"
 	L4ConnectSNI = "consumer-masque-proxy.cloudflareclient.com"
