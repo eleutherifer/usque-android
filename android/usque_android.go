@@ -221,13 +221,6 @@ func GetPacketSamples() string {
 	return strings.Join(packetSamples, "\n")
 }
 
-var (
-	tunReadCount  int64
-	tunReadBytes  int64
-	tunWriteCount int64
-	tunWriteBytes int64
-)
-
 // 2026.08.05 12:51 Откат ReadPacket
 func (d *AndroidTunDevice) ReadPacket(buf []byte) (int, error) {
 	n, err := d.file.Read(buf)
