@@ -172,7 +172,7 @@ var (
 	packetSamples   []string
 )
 
-const packetSampleLimit = 20
+const packetSampleLimit = 150
 
 func addPacketSample(dir string, b []byte) {
 	packetSamplesMu.Lock()
