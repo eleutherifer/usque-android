@@ -177,10 +177,10 @@ const packetSampleLimit = 150
 func addPacketSample(dir string, b []byte) {
 	packetSamplesMu.Lock()
 	defer packetSamplesMu.Unlock()
-	if len(packetSamples) >= packetSampleLimit*2 {
-		return
-	}
 	packetSamples = append(packetSamples, dir+" "+packetSummary(b))
+	if len(packetSamples) > packetSampleLimit*2 {
+		packetSamples = packetSamples[len(packetSamples)-packetSampleLimit*2:]
+	}
 }
 
 func packetSummary(b []byte) string {
@@ -286,11 +286,10 @@ func (d *AndroidTunDevice) ReadPacket(buf []byte) (int, error) {
 	}
     atomic.AddInt64(&tunReadCount, 1)
 	atomic.AddInt64(&tunReadBytes, int64(n))
-	if isTCPPort443(buf[:n]) {
-		c := atomic.AddInt64(&tunReadTCPCount, 1)
-		if c <= packetSampleLimit {
-			addPacketSample("OUT", buf[:n])
-		}
+
+    if isTCPPort443(buf[:n]) {
+		atomic.AddInt64(&tunReadTCPCount, 1)
+		addPacketSample("OUT", buf[:n])
 	}
 	return n, nil
 }
@@ -326,10 +325,8 @@ func (d *AndroidTunDevice) WritePacket(pkt []byte) error {
         atomic.AddInt64(&tunWriteCount, 1)
         atomic.AddInt64(&tunWriteBytes, int64(len(pkt)))
         if isTCPPort443(pkt) {
-            c := atomic.AddInt64(&tunWriteTCPCount, 1)
-            if c <= packetSampleLimit {
-                addPacketSample("IN ", pkt)
-            }
+            atomic.AddInt64(&tunWriteTCPCount, 1)
+            addPacketSample("IN ", pkt)
         }
     }
     return err
