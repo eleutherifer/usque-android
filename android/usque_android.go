@@ -223,7 +223,7 @@ func packetSummary(b []byte) string {
 		if proto == 6 && len(b) >= 54 {
 			flags = " flags=" + tcpFlagsString(b[53])
 		}
-		return fmt.Sprintf("v6 proto=%d %s:%d -> %s:%d len=%d%s", proto, src, sport, dst, dport, len(b), flags)
+        return fmt.Sprintf("v6 proto=%d [%s]:%d -> [%s]:%d len=%d%s", proto, src, sport, dst, dport, len(b), flags)
 	default:
 		return fmt.Sprintf("unknown ver=%d len=%d", ver, len(b))
 	}
@@ -240,15 +240,32 @@ func tcpFlagsString(b byte) string {
 	return strings.Join(flags, "|")
 }
 
-func isTCP(b []byte) bool {
+// isTCPPort443 проверяет TCP-пакет именно на порт 443 (HTTPS) — чтобы
+// сэмплы ловили конкретно попытку открыть сайт в браузере, а не фоновый
+// трафик вроде push-уведомлений (порт 5228) или DNS-over-TLS (порт 853).
+func isTCPPort443(b []byte) bool {
 	if len(b) < 1 {
 		return false
 	}
 	switch b[0] >> 4 {
 	case 4:
-		return len(b) >= 10 && b[9] == 6
+		if len(b) < 20 || b[9] != 6 {
+			return false
+		}
+		ihl := int(b[0]&0x0f) * 4
+		if len(b) < ihl+4 {
+			return false
+		}
+		sport := int(b[ihl])<<8 | int(b[ihl+1])
+		dport := int(b[ihl+2])<<8 | int(b[ihl+3])
+		return sport == 443 || dport == 443
 	case 6:
-		return len(b) >= 7 && b[6] == 6
+		if len(b) < 44 || b[6] != 6 {
+			return false
+		}
+		sport := int(b[40])<<8 | int(b[41])
+		dport := int(b[42])<<8 | int(b[43])
+		return sport == 443 || dport == 443
 	}
 	return false
 }
@@ -269,7 +286,7 @@ func (d *AndroidTunDevice) ReadPacket(buf []byte) (int, error) {
 	}
     atomic.AddInt64(&tunReadCount, 1)
 	atomic.AddInt64(&tunReadBytes, int64(n))
-	if isTCP(buf[:n]) {
+	if isTCPPort443(buf[:n]) {
 		c := atomic.AddInt64(&tunReadTCPCount, 1)
 		if c <= packetSampleLimit {
 			addPacketSample("OUT", buf[:n])
@@ -308,7 +325,7 @@ func (d *AndroidTunDevice) WritePacket(pkt []byte) error {
     if err == nil {
         atomic.AddInt64(&tunWriteCount, 1)
         atomic.AddInt64(&tunWriteBytes, int64(len(pkt)))
-        if isTCP(pkt) {
+        if isTCPPort443(pkt) {
             c := atomic.AddInt64(&tunWriteTCPCount, 1)
             if c <= packetSampleLimit {
                 addPacketSample("IN ", pkt)
