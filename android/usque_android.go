@@ -459,7 +459,7 @@ func StartTunnel(configPath string, tunFd int, mtu int, packetFlow PacketFlow, c
         api.MaintainTunnel(ctx, api.MaintainTunnelConfig{
             TLSConfig:         tlsConfig,
             KeepalivePeriod:   30 * time.Second,
-            InitialPacketSize: 1242,
+            InitialPacketSize: 0,
             Endpoint:          endpoint,
             Device:            tunDevice,
             MTU:               mtu,
