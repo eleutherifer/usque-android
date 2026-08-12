@@ -98,7 +98,7 @@
             android:id="@+id/sni_text"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="SNI: cdnjs.cloudflare.com"
+            android:text="SNI: deepseek.com"
             android:textSize="12sp"
             android:textColor="#aaaaaa" />
 
@@ -106,7 +106,7 @@
             android:id="@+id/endpoint_text"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Endpoint: 162.159.198.1"
+            android:text="Endpoint: 162.159.198.2"
             android:textSize="12sp"
             android:textColor="#aaaaaa"
             android:layout_marginTop="4dp" />

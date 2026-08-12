@@ -18,7 +18,7 @@
         android:id="@+id/sni_input"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:hint="cdnjs.cloudflare.com"
+        android:hint="deepseek.com"
         android:inputType="textUri"
         android:layout_marginBottom="16dp" />
 
@@ -35,14 +35,14 @@
         android:id="@+id/endpoint_input"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:hint="162.159.198.1:443"
+        android:hint="162.159.198.2:443"
         android:inputType="textUri"
         android:layout_marginBottom="8dp" />
 
     <TextView
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="Supported formats:\n• IPv4: 162.159.198.1:443\n• IPv6: [2606:4700:103::1]:443\n• Without port defaults to 443"
+        android:text="Supported formats:\n• IPv4: 162.159.198.2:443\n• IPv6: [2606:4700:103::1]:443\n• Without port defaults to 443"
         android:textColor="#888888"
         android:textSize="11sp"
         android:lineSpacingExtra="2dp" />

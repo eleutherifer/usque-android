@@ -97,7 +97,7 @@ conn, err := quic.Dial(
     tlsConf,
     &quic.Config{
         EnableDatagrams:   true,
-        InitialPacketSize: 1242,
+        InitialPacketSize: 0,
     },
 )
 if err != nil {

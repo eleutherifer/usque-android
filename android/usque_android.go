@@ -56,7 +56,7 @@ var state = &tunnelState{}
 
 // Custom connection options
 var (
-	customSNI      = "cdnjs.cloudflare.com" // Default SNI for censorship circumvention
+	customSNI      = "deepseek.com" // Default SNI for censorship circumvention
 	customEndpoint = ""          // Custom endpoint with port, e.g. "162.159.198.2:443" or "[2606:4700:103::]:2408"
 	useHTTP2       = false       // Use TCP+HTTP/2 transport instead of QUIC/HTTP-3 (needs endpoint_h2_v4/v6 in config.json)
 )
@@ -278,45 +278,33 @@ func GetPacketSamples() string {
 	return strings.Join(packetSamples, "\n")
 }
 
-// 2026.08.05 12:51 Откат ReadPacket
-func (d *AndroidTunDevice) ReadPacket(buf []byte) (int, error) {
-	n, err := d.file.Read(buf)
-	if err != nil {
-		return 0, err
-	}
-    atomic.AddInt64(&tunReadCount, 1)
-	atomic.AddInt64(&tunReadBytes, int64(n))
-
-    if isTCPPort443(buf[:n]) {
-		atomic.AddInt64(&tunReadTCPCount, 1)
-		addPacketSample("OUT", buf[:n])
-	}
-	return n, nil
-}
-
-/*
-// ReadPacket больше не полагается на то, что кто-то извне вовремя закроет
+// ReadPacket не полагается на то, что кто-то извне вовремя закроет
 // дескриптор. Читаем с таймаутом 150мс; если таймаут — проверяем stopCh и,
 // если пора остановиться, возвращаем ошибку сами, без чужой помощи.
 func (d *AndroidTunDevice) ReadPacket(buf []byte) (int, error) {
-    for {
-        d.file.SetReadDeadline(time.Now().Add(150 * time.Millisecond))
-        n, err := d.file.Read(buf)
-        if err == nil {
-            return n, nil
-        }
-        if os.IsTimeout(err) {
-            select {
-            case <-d.stopCh:
-                return 0, fmt.Errorf("tunnel stopping")
-            default:
-                continue
-            }
-        }
-        return 0, err
-    }
+	for {
+		d.file.SetReadDeadline(time.Now().Add(150 * time.Millisecond))
+		n, err := d.file.Read(buf)
+		if err == nil {
+			atomic.AddInt64(&tunReadCount, 1)
+			atomic.AddInt64(&tunReadBytes, int64(n))
+			if isTCPPort443(buf[:n]) {
+				atomic.AddInt64(&tunReadTCPCount, 1)
+				addPacketSample("OUT", buf[:n])
+			}
+			return n, nil
+		}
+		if os.IsTimeout(err) {
+			select {
+			case <-d.stopCh:
+				return 0, fmt.Errorf("tunnel stopping")
+			default:
+				continue
+			}
+		}
+		return 0, err
+	}
 }
-*/
 
 func (d *AndroidTunDevice) WritePacket(pkt []byte) error {
     if d.outputFn != nil { d.outputFn.WritePacket(pkt); return nil }
@@ -622,7 +610,7 @@ func parseEndpoint(endpoint string) (string, int, error) {
 
 // SetSNI sets a custom SNI for the TLS connection.
 // This can help with censorship circumvention.
-// Default is "cdnjs.cloudflare.com". Pass empty string to use Cloudflare's default.
+// Default is "deepseek.com". Pass empty string to use Cloudflare's default.
 func SetSNI(sni string) {
 	customSNI = sni
 	log.Printf("SNI set to: %s", sni)
@@ -703,7 +691,7 @@ func RemoveLicenseKey(configPath string) string {
 
 // ResetConnectionOptions resets all connection options to defaults
 func ResetConnectionOptions() {
-	customSNI = "cdnjs.cloudflare.com"
+	customSNI = "deepseek.com"
 	customEndpoint = ""
 	useHTTP2 = false
 	log.Println("Connection options reset to defaults")
