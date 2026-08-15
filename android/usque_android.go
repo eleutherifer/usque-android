@@ -524,6 +524,7 @@ func StopTunnel() {
 		return
 	}
 
+	trace("StopTunnel: called")
 	log.Println("Stopping tunnel...")
 
 	if state.cancel != nil {
