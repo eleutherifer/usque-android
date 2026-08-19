@@ -170,7 +170,28 @@ var (
 
 	packetSamplesMu sync.Mutex
 	packetSamples   []string
+
+	traceMu  sync.Mutex
+	traceLog []string
 )
+
+// trace записывает метку времени + событие в журнал остановки/запуска —
+// чтобы видеть по секундам, где застревает остановка, а не гадать.
+func trace(msg string) {
+	traceMu.Lock()
+	defer traceMu.Unlock()
+	traceLog = append(traceLog, time.Now().Format("15:04:05.000")+" "+msg)
+	if len(traceLog) > 50 {
+		traceLog = traceLog[len(traceLog)-50:]
+	}
+}
+
+// GetShutdownTrace возвращает журнал ключевых точек запуска/остановки туннеля.
+func GetShutdownTrace() string {
+	traceMu.Lock()
+	defer traceMu.Unlock()
+	return strings.Join(traceLog, "\n")
+}
 
 const packetSampleLimit = 150
 
