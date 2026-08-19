@@ -454,19 +454,21 @@ func StartTunnel(configPath string, tunFd int, mtu int, packetFlow PacketFlow, c
 
     go func() {
         <-ctx.Done()
+        trace("ctx.Done() -> closing stopCh")
         close(tunDevice.stopCh)
     }()
-
+	
 	state.running = true
 	state.callback = callback
 
 	// Start tunnel maintenance in background
-	go func() {
+    go func() {
         var lastReportedConnected int32 = -1 // -1 = ещё неизвестно, 0 = не подключено, 1 = подключено
+		trace("MaintainTunnel: starting")
 		log.Println("Starting MASQUE tunnel...")
 
         api.MaintainTunnel(ctx, api.MaintainTunnelConfig{
-            TLSConfig:         tlsConfig,
+			TLSConfig:         tlsConfig,
             KeepalivePeriod:   30 * time.Second,
             InitialPacketSize: 0,
             Endpoint:          endpoint,
@@ -497,9 +499,11 @@ func StartTunnel(configPath string, tunFd int, mtu int, packetFlow PacketFlow, c
 			},
         })
 		
-		// Tunnel exited
+        // Tunnel exited
+		trace("MaintainTunnel: returned")
 		log.Println("MASQUE tunnel exited")
 		tunDevice.Close()
+		trace("tunDevice.Close(): done")
 
         state.mu.Lock()
         if atomic.LoadInt64(&currentSessionID) == mySessionID {
