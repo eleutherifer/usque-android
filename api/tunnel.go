@@ -322,9 +322,10 @@ func MaintainTunnel(ctx context.Context, cfg MaintainTunnelConfig) {
 		go func() {
 			defer wg.Done()
 			for {
-				if pumpCtx.Err() != nil {
-					return
-				}
+                if pumpCtx.Err() != nil {
+	                errChan <- pumpCtx.Err()
+			        return
+		        }
 				buf := packetBufferPool.Get()
 				readMu.Lock()
 				n, err := cfg.Device.ReadPacket(buf[datagramContextIDHeadroom:])
