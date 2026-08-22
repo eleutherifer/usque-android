@@ -50,6 +50,7 @@ type tunnelState struct {
 	cancel    context.CancelFunc
 	inputChan chan []byte
 	callback  VpnStateCallback
+	tunDevice *AndroidTunDevice
 }
 
 var state = &tunnelState{}
@@ -415,6 +416,7 @@ func StartTunnel(configPath string, tunFd int, mtu int, packetFlow PacketFlow, c
 	// Create Android TUN device wrapper
 	tunDevice, err := newAndroidTunDevice(tunFd, mtu, packetFlow)
 	if err != nil {
+		state.tunDevice = tunDevice
 		return fmt.Sprintf("Failed to create TUN device: %v", err)
 	}
 
@@ -554,6 +556,11 @@ func StopTunnel() {
 
 	if state.cancel != nil {
 		state.cancel()
+	}
+	if state.tunDevice != nil {
+		state.tunDevice.Close()
+		trace("StopTunnel: tunDevice.Close() direct")
+		state.tunDevice = nil
 	}
 
 	state.running = false
