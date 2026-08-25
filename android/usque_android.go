@@ -23,6 +23,7 @@ import (
 	"github.com/Diniboy1123/usque/api"
 	"github.com/Diniboy1123/usque/config"
 	"github.com/Diniboy1123/usque/internal"
+    connectip "github.com/Diniboy1123/connect-ip-go"
 )
 
 // PacketFlow is the interface that Android must implement to exchange packets with the VPN
@@ -51,8 +52,8 @@ type tunnelState struct {
 	inputChan chan []byte
 	callback  VpnStateCallback
 	tunDevice *AndroidTunDevice
+	ipConn    *connectip.Conn
 }
-
 var state = &tunnelState{}
 
 // Custom connection options
@@ -478,7 +479,12 @@ func StartTunnel(configPath string, tunFd int, mtu int, packetFlow PacketFlow, c
             MTU:               mtu,
             ReconnectDelay:    time.Second,
             UseHTTP2:          useHTTP2,
-            AlwaysReconnect:   true,
+			AlwaysReconnect:   true,
+			OnIPConnEstablished: func(c *connectip.Conn) {
+				state.mu.Lock()
+				state.ipConn = c
+				state.mu.Unlock()
+			},
 			OnConnectFunc: func() {
     			if atomic.LoadInt64(&currentSessionID) != mySessionID {
         			return
@@ -562,7 +568,12 @@ func StopTunnel() {
 		trace("StopTunnel: tunDevice.Close() direct")
 		state.tunDevice = nil
 	}
-
+	if state.ipConn != nil {
+		state.ipConn.Close()
+		trace("StopTunnel: ipConn.Close() direct")
+		state.ipConn = nil
+	}
+	
 	state.running = false
 }
 
