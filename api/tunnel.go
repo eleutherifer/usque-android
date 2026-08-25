@@ -180,11 +180,15 @@ type MaintainTunnelConfig struct {
 	// parent process env for OnConnect / OnDisconnect invocations. USQUE_EVENT
 	// and USQUE_ENDPOINT are set by MaintainTunnel itself.
 	HookEnv map[string]string
-		// OnConnectFunc, если задан, вызывается сразу после реального успешного
+	// OnConnectFunc, если задан, вызывается сразу после реального успешного
 	// подключения — в дополнение к OnConnect (не вместо). В отличие от
 	// OnConnect (внешний exec), это настоящий Go-колбэк — то, что нужно для
 	// встраивания библиотеки в другое приложение (например, Android-биндинги).
 	OnConnectFunc func()
+	// OnIPConnEstablished, если задан, вызывается сразу после установления
+	// ipConn — чтобы вызывающая сторона могла закрыть его напрямую при
+	// остановке, не дожидаясь, пока насосы сами заметят отмену.
+	OnIPConnEstablished func(*connectip.Conn)
 	// OnDisconnectFunc — то же самое для обрыва, с реальной ошибкой обрыва.
 	OnDisconnectFunc func(error)
 }
@@ -302,6 +306,10 @@ func MaintainTunnel(ctx context.Context, cfg MaintainTunnelConfig) {
 
 		log.Println("Connected to MASQUE server")
 
+        if cfg.OnIPConnEstablished != nil {
+			cfg.OnIPConnEstablished(ipConn)
+		}
+		
 		if cfg.OnConnect != "" {
 			env := cloneHookEnv(cfg.HookEnv)
 			env["USQUE_EVENT"] = "connect"
@@ -323,9 +331,9 @@ func MaintainTunnel(ctx context.Context, cfg MaintainTunnelConfig) {
 			defer wg.Done()
 			for {
                 if pumpCtx.Err() != nil {
-	                errChan <- pumpCtx.Err()
-			        return
-		        }
+				    errChan <- pumpCtx.Err()
+				    return
+			    }
 				buf := packetBufferPool.Get()
 				readMu.Lock()
 				n, err := cfg.Device.ReadPacket(buf[datagramContextIDHeadroom:])
@@ -335,8 +343,9 @@ func MaintainTunnel(ctx context.Context, cfg MaintainTunnelConfig) {
 					errChan <- fmt.Errorf("failed to read from TUN device: %w", err)
 					return
 				}
-				if pumpCtx.Err() != nil {
+                if pumpCtx.Err() != nil {
 					packetBufferPool.Put(buf)
+					errChan <- pumpCtx.Err()
 					return
 				}
 				icmp, err := ipConn.WritePacketBuffer(buf, datagramContextIDHeadroom, n)
