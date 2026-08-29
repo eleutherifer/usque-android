@@ -60,8 +60,13 @@ var state = &tunnelState{}
 var (
 	customSNI      = "speed.cloudflare.com" // Default SNI for censorship circumvention
 	customEndpoint = ""          // Custom endpoint with port, e.g. "162.159.198.2:443" or "[2606:4700:103::2]:443"
-	useHTTP2       = false       // Use TCP+HTTP/2 transport instead of QUIC/HTTP-3 (needs endpoint_h2_v4/v6 in config.json)
+	// transportPolicy: "auto" (HTTP/3, затем HTTP/2 при таймауте), "http3", "http2".
+	transportPolicy = "auto"
 )
+
+// autoTransportTimeout — сколько ждём успешного подключения по HTTP/3
+// в режиме "auto", прежде чем переключиться на HTTP/2.
+const autoTransportTimeout = 8 * time.Second
 
 var currentSessionID int64 = 0
 
@@ -358,6 +363,90 @@ func (d *AndroidTunDevice) Close() error {
     return nil
 }
 
+// resolveEndpoint выбирает адрес конечной точки для конкретного варианта
+// транспорта: свой (customEndpoint), если задан, иначе — из конфига через
+// SelectEndpointFromConfig. useHttp2 определяет тип адреса (TCP или UDP) и
+// какое поле конфига читать (endpoint_h2_v4/v6 или endpoint_v4/v6).
+func resolveEndpoint(useHttp2 bool) (net.Addr, error) {
+	if customEndpoint != "" {
+		host, port, err := parseEndpoint(customEndpoint)
+		if err != nil {
+			return nil, fmt.Errorf("invalid custom endpoint '%s': %w", customEndpoint, err)
+		}
+		ip := net.ParseIP(host)
+		if ip == nil {
+			return nil, fmt.Errorf("invalid custom endpoint IP '%s'", host)
+		}
+		if useHttp2 {
+			return &net.TCPAddr{IP: ip, Port: port}, nil
+		}
+		return &net.UDPAddr{IP: ip, Port: port}, nil
+	}
+	endpoint, err := config.SelectEndpointFromConfig(useHttp2, false, 443)
+	if err != nil {
+		return nil, fmt.Errorf("failed to select endpoint: %w", err)
+	}
+	return endpoint, nil
+}
+
+// runSingleAttempt выполняет один вызов MaintainTunnel для конкретного
+// варианта транспорта и репортит подключение/отключение через общий
+// lastReportedConnected + callback, с проверкой на актуальность сессии.
+// onConnect (если не nil) дополнительно вызывается при первом успешном
+// подключении — используется для гонки с таймаутом в режиме "auto".
+func runSingleAttempt(
+	ctx context.Context,
+	tlsConfig *tls.Config,
+	endpoint net.Addr,
+	tunDevice *AndroidTunDevice,
+	mtu int,
+	useHttp2 bool,
+	mySessionID int64,
+	lastReportedConnected *int32,
+	callback VpnStateCallback,
+	onConnect func(),
+) {
+	api.MaintainTunnel(ctx, api.MaintainTunnelConfig{
+		TLSConfig:         tlsConfig,
+		KeepalivePeriod:   30 * time.Second,
+		InitialPacketSize: 0,
+		Endpoint:          endpoint,
+		Device:            tunDevice,
+		MTU:               mtu,
+		ReconnectDelay:    time.Second,
+		UseHTTP2:          useHttp2,
+		AlwaysReconnect:   true,
+		OnIPConnEstablished: func(c *connectip.Conn) {
+			state.mu.Lock()
+			state.ipConn = c
+			state.mu.Unlock()
+		},
+		OnConnectFunc: func() {
+			if onConnect != nil {
+				onConnect()
+			}
+			if atomic.LoadInt64(&currentSessionID) != mySessionID {
+				return
+			}
+			if atomic.SwapInt32(lastReportedConnected, 1) != 1 && callback != nil {
+				callback.OnConnected()
+			}
+		},
+		OnDisconnectFunc: func(err error) {
+			if atomic.LoadInt64(&currentSessionID) != mySessionID {
+				return
+			}
+			if atomic.SwapInt32(lastReportedConnected, 0) != 0 && callback != nil {
+				reason := "tunnel disconnected"
+				if err != nil {
+					reason = err.Error()
+				}
+				callback.OnError(reason)
+			}
+		},
+	})
+}
+
 // StartTunnel starts the VPN tunnel using the provided TUN file descriptor.
 // This function connects directly to Cloudflare WARP and forwards all traffic.
 //
@@ -421,35 +510,15 @@ func StartTunnel(configPath string, tunFd int, mtu int, packetFlow PacketFlow, c
 		return fmt.Sprintf("Failed to create TUN device: %v", err)
 	}
 
-	// Endpoint — свой, если задан, иначе SelectEndpointFromConfig сам решит,
-	// какое поле конфига брать (endpoint_v4/v6 для QUIC, endpoint_h2_v4/v6 для HTTP/2).
-    var endpoint net.Addr
-    if customEndpoint != "" {
-        // Кастомный endpoint используется в обоих режимах — тип адреса ниже
-        // подбирается под useHTTP2, так что TCP/UDP не перепутаются.
-        host, port, err := parseEndpoint(customEndpoint)
-        if err != nil {
-            return fmt.Sprintf("Invalid custom endpoint '%s': %v", customEndpoint, err)
-        }
-        ip := net.ParseIP(host)
-		
-        if ip == nil {
-            return fmt.Sprintf("Invalid custom endpoint IP '%s'", host)
-        }
-        if useHTTP2 {
-            endpoint = &net.TCPAddr{IP: ip, Port: port}
-        } else {
-            endpoint = &net.UDPAddr{IP: ip, Port: port}
-        }
-        log.Printf("Using custom endpoint: %s:%d (http2=%v)", host, port, useHTTP2)
-    } else {
-        var err error
-        endpoint, err = config.SelectEndpointFromConfig(useHTTP2, false, 443)
-        if err != nil {
-            return fmt.Sprintf("Failed to select endpoint: %v", err)
-        }
-        log.Printf("Using endpoint from config: %s (http2=%v)", endpoint, useHTTP2)
-    }
+	// Первый endpoint: для "http2" сразу TCP+HTTP/2, для "auto"/"http3" — как
+	// для QUIC (запасной endpoint для HTTP/2 в режиме "auto" выбирается
+	// отдельно, только если действительно понадобится переключение).
+	firstUsesHttp2 := transportPolicy == "http2"
+	endpoint, err := resolveEndpoint(firstUsesHttp2)
+	if err != nil {
+		return err.Error()
+	}
+	log.Printf("Using endpoint: %s (transport=%s)", endpoint, transportPolicy)
 
 	// Create context for cancellation
 	ctx, cancel := context.WithCancel(context.Background())
@@ -470,43 +539,61 @@ func StartTunnel(configPath string, tunFd int, mtu int, packetFlow PacketFlow, c
 		trace("MaintainTunnel: starting")
 		log.Println("Starting MASQUE tunnel...")
 
-        api.MaintainTunnel(ctx, api.MaintainTunnelConfig{
-			TLSConfig:         tlsConfig,
-            KeepalivePeriod:   30 * time.Second,
-            InitialPacketSize: 0,
-            Endpoint:          endpoint,
-            Device:            tunDevice,
-            MTU:               mtu,
-            ReconnectDelay:    time.Second,
-            UseHTTP2:          useHTTP2,
-			AlwaysReconnect:   true,
-			OnIPConnEstablished: func(c *connectip.Conn) {
-				state.mu.Lock()
-				state.ipConn = c
-				state.mu.Unlock()
-			},
-			OnConnectFunc: func() {
-    			if atomic.LoadInt64(&currentSessionID) != mySessionID {
-        			return
-    			}
-    			if atomic.SwapInt32(&lastReportedConnected, 1) != 1 && callback != nil {
-        			callback.OnConnected()
-    			}
-			},
-			OnDisconnectFunc: func(err error) {
-    			if atomic.LoadInt64(&currentSessionID) != mySessionID {
-        			return
-    			}
-			    if atomic.SwapInt32(&lastReportedConnected, 0) != 0 && callback != nil {
-        			reason := "tunnel disconnected"
-			        if err != nil {
-            			reason = err.Error()
-			        }
-			        callback.OnError(reason)
-			    }
-			},
-        })
-		
+        switch transportPolicy {
+        case "http2":
+            runSingleAttempt(ctx, tlsConfig, endpoint, tunDevice, mtu, true, mySessionID, &lastReportedConnected, callback, nil)
+
+        case "auto":
+            attemptCtx, cancelAttempt := context.WithCancel(ctx)
+            defer cancelAttempt()
+
+            connected := make(chan struct{}, 1)
+            attemptDone := make(chan struct{})
+            go func() {
+                defer close(attemptDone)
+                runSingleAttempt(attemptCtx, tlsConfig, endpoint, tunDevice, mtu, false, mySessionID, &lastReportedConnected, callback, func() {
+                    select {
+                    case connected <- struct{}{}:
+                    default:
+                    }
+                })
+            }()
+
+            fellBack := false
+            select {
+            case <-connected:
+                trace("Auto: HTTP/3 connected in time")
+            case <-time.After(autoTransportTimeout):
+                trace("Auto: HTTP/3 timeout, falling back to HTTP/2")
+                cancelAttempt()
+                state.mu.Lock()
+                if state.ipConn != nil {
+                    state.ipConn.Close()
+                    state.ipConn = nil
+                }
+                state.mu.Unlock()
+                fellBack = true
+            case <-ctx.Done():
+                cancelAttempt()
+            }
+            <-attemptDone
+
+            if fellBack {
+                http2Endpoint, err := resolveEndpoint(true)
+                if err != nil {
+                    log.Printf("Auto: failed to resolve HTTP/2 fallback endpoint: %v", err)
+                    if atomic.LoadInt64(&currentSessionID) == mySessionID && callback != nil {
+                        callback.OnError(fmt.Sprintf("HTTP/2 fallback failed: %v", err))
+                    }
+                } else {
+                    runSingleAttempt(ctx, tlsConfig, http2Endpoint, tunDevice, mtu, true, mySessionID, &lastReportedConnected, callback, nil)
+                }
+            }
+
+        default: // "http3" и любое нераспознанное значение
+            runSingleAttempt(ctx, tlsConfig, endpoint, tunDevice, mtu, false, mySessionID, &lastReportedConnected, callback, nil)
+        }
+
         // Tunnel exited
 		trace("MaintainTunnel: returned")
 		log.Println("MASQUE tunnel exited")
@@ -698,16 +785,23 @@ func GetDefaultEndpoint(configPath string, http2 bool) string {
     return config.AppConfig.EndpointV4 + ":443"
 }
 
-// SetUseHttp2 включает TCP+HTTP/2-транспорт вместо QUIC/HTTP-3 — полезно,
-// когда QUIC/UDP заблокирован на уровне сети. Использует endpoint_h2_v4/
-// endpoint_h2_v6 из config.json (если не заданы — дефолт 162.159.198.2).
-func SetUseHttp2(enabled bool) {
-	useHTTP2 = enabled
-	log.Printf("HTTP/2 transport set to: %v", enabled)
+// SetTransportPolicy задаёт стратегию выбора транспорта: "auto" (сперва
+// QUIC/HTTP-3, и если за autoTransportTimeout не подключились — переход на
+// TCP+HTTP/2), "http3" (только QUIC) или "http2" (только TCP+HTTP/2, нужны
+// endpoint_h2_v4/endpoint_h2_v6 в config.json). Нераспознанное значение
+// трактуется как "auto".
+func SetTransportPolicy(policy string) {
+	switch policy {
+	case "auto", "http3", "http2":
+		transportPolicy = policy
+	default:
+		transportPolicy = "auto"
+	}
+	log.Printf("Transport policy set to: %v", transportPolicy)
 }
 
-func GetUseHttp2() bool {
-	return useHTTP2
+func GetTransportPolicy() string {
+	return transportPolicy
 }
 
 func GetLicenseKey(configPath string) string {
@@ -735,10 +829,10 @@ func RemoveLicenseKey(configPath string) string {
 
 // ResetConnectionOptions resets all connection options to defaults
 func ResetConnectionOptions() {
-	customSNI = "speed.cloudflare.com"
-	customEndpoint = ""
-	useHTTP2 = false
-	log.Println("Connection options reset to defaults")
+    customSNI = "speed.cloudflare.com"
+    customEndpoint = ""
+    transportPolicy = "auto"
+    log.Println("Connection options reset to defaults")
 }
 
 // ============================================
