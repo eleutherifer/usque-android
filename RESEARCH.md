@@ -45,10 +45,10 @@ Then I installed the Linux client for ease of network debugging and opened WireS
 The following filter worked for me:
 
 ```
-ip.dst == 162.159.198.1 || ip.src == 162.159.198.1
+ip.dst == 162.159.198.2 || ip.src == 162.159.198.2
 ```
 
-`162.159.198.1` seems to be the anycast IP all Warp clients use for the actual tunnel.
+`162.159.198.2` seems to be the anycast IP all Warp clients use for the actual tunnel.
 
 The initial QUIC packet was a great starting point:
 
@@ -93,7 +93,7 @@ if err != nil {
 conn, err := quic.Dial(
     ctx,
     udpConn,
-    &net.UDPAddr{IP: net.ParseIP("162.159.198.1"), Port: 443},
+    &net.UDPAddr{IP: net.ParseIP("162.159.198.2"), Port: 443},
     tlsConf,
     &quic.Config{
         EnableDatagrams:   true,
@@ -151,7 +151,7 @@ if err != nil {
 	log.Fatalf("failed to listen udp: %v", err)
 }
 
-ccon, err := quic.Dial(ctx, udpConn, &net.UDPAddr{IP: net.ParseIP("162.159.198.1"), Port: 443}, tlsConf, &quic.Config{EnableDatagrams: true})
+ccon, err := quic.Dial(ctx, udpConn, &net.UDPAddr{IP: net.ParseIP("162.159.198.2"), Port: 443}, tlsConf, &quic.Config{EnableDatagrams: true})
 if err != nil {
 	log.Fatalf("failed to dial: %v", err)
 }

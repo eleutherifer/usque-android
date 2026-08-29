@@ -185,7 +185,7 @@ $ curl --interface tun0 https://cloudflare.com/cdn-cgi/trace
 Should just work. However **the tool doesn't set any routes**. If you need that, you have to do that manually. For example, to route all traffic to the tunnel, you need to make sure that the address used for tunnel communication is routed to your regular network interface. For that, open the `config.json` and check the endpoint address. If you plan to connect to the Cloudflare endpoint using IPv4, you will most likely see this:
 
 ```json
-"endpoint_v4": "162.159.198.1"
+"endpoint_v4": "162.159.198.2"
 ```
 
 Remember that for the next steps.
@@ -195,7 +195,7 @@ Remember that for the next steps.
 Assuming your regular network interface is `eth0` and your gateway address is `192.168.1.1`, you can add a route like this:
 
 ```shell
-$ sudo ip route add 162.159.198.1/32 via 192.168.1.1 dev eth0
+$ sudo ip route add 162.159.198.2/32 via 192.168.1.1 dev eth0
 ```
 
 After that, you can add a default route to the `tun0` interface for both IPv4 and IPv6:
@@ -224,7 +224,7 @@ Look for the adapter named `usque` (or whatever name you have for your tunnel in
 
 Assuming:
 
-* Tunnel endpoint: `162.159.198.1`
+* Tunnel endpoint: `162.159.198.2`
 * Gateway: `192.168.1.1`
 * Interface index: `12`
 * Tunnel interface: `usque` (replace with the actual name or index of your tunnel interface)
@@ -232,7 +232,7 @@ Assuming:
 Run the following commands in an **elevated Command Prompt** (Run as Administrator):
 
 ```cmd
-route add 162.159.198.1 mask 255.255.255.255 192.168.1.1 metric 1 if 12
+route add 162.159.198.2 mask 255.255.255.255 192.168.1.1 metric 1 if 12
 ```
 
 Then add default routes to route all traffic through the tunnel:
@@ -400,7 +400,7 @@ $ sudo ./usque nativetun \
 # /etc/usque/up.sh
 #!/bin/sh
 set -e
-ip route replace 162.159.198.1/32 via 192.168.1.1 dev eth0
+ip route replace 162.159.198.2/32 via 192.168.1.1 dev eth0
 ip route del default || true
 ip route replace default dev "$USQUE_IFACE"
 ip -6 route replace default dev "$USQUE_IFACE"
@@ -463,8 +463,8 @@ Example config:
 ```json
 {
   "private_key": "M...redacted...==",
-  "endpoint_v4": "162.159.198.1",
-  "endpoint_v6": "2606:4700:103::",
+  "endpoint_v4": "162.159.198.2",
+  "endpoint_v6": "2606:4700:103::2",
   "endpoint_h2_v4": "162.159.198.2",
   "endpoint_h2_v6": "",
   "endpoint_pub_key": "-----BEGIN PUBLIC KEY-----\nMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEIaU7MToJm9NKp8YfGxR6r+/h4mcG\n7SxI8tsW8OR1A5tv/zCzVbCRRh2t87/kxnP6lAy0lkr7qYwu+ox+k3dr6w==\n-----END PUBLIC KEY-----\n",

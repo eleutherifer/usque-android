@@ -58,8 +58,8 @@ var state = &tunnelState{}
 
 // Custom connection options
 var (
-	customSNI      = "deepseek.com" // Default SNI for censorship circumvention
-	customEndpoint = ""          // Custom endpoint with port, e.g. "162.159.198.2:443" or "[2606:4700:103::]:2408"
+	customSNI      = "speed.cloudflare.com" // Default SNI for censorship circumvention
+	customEndpoint = ""          // Custom endpoint with port, e.g. "162.159.198.2:443" or "[2606:4700:103::2]:443"
 	useHTTP2       = false       // Use TCP+HTTP/2 transport instead of QUIC/HTTP-3 (needs endpoint_h2_v4/v6 in config.json)
 )
 
@@ -591,7 +591,7 @@ func GetVersion() string {
 
 // parseEndpoint parses an endpoint string in the format:
 // - "host:port" for IPv4 (e.g., "162.159.198.2:443")
-// - "[host]:port" for IPv6 (e.g., "[2606:4700:103::]:2408")
+// - "[host]:port" for IPv6 (e.g., "[2606:4700:103::2]:443")
 // - "host" without port (defaults to 443)
 func parseEndpoint(endpoint string) (string, int, error) {
 	// Check if it's an IPv6 address with brackets
@@ -654,7 +654,7 @@ func parseEndpoint(endpoint string) (string, int, error) {
 
 // SetSNI sets a custom SNI for the TLS connection.
 // This can help with censorship circumvention.
-// Default is "deepseek.com". Pass empty string to use Cloudflare's default.
+// Default is "speed.cloudflare.com". Pass empty string to use Cloudflare's default.
 func SetSNI(sni string) {
 	customSNI = sni
 	log.Printf("SNI set to: %s", sni)
@@ -668,9 +668,9 @@ func GetSNI() string {
 // SetEndpoint sets a custom endpoint for the MASQUE connection.
 // Supports the following formats:
 //   - "162.159.198.2" (IPv4, default port 443)
-//   - "162.159.198.2:2408" (IPv4 with custom port)
-//   - "[2606:4700:103::]" (IPv6, default port 443)
-//   - "[2606:4700:103::]:2408" (IPv6 with custom port)
+//   - "162.159.198.2:443" (IPv4 with custom port)
+//   - "[2606:4700:103::2]" (IPv6, default port 443)
+//   - "[2606:4700:103::2]:443" (IPv6 with custom port)
 //
 // Pass empty string to use the default endpoint from config.json.
 func SetEndpoint(endpoint string) {
@@ -735,7 +735,7 @@ func RemoveLicenseKey(configPath string) string {
 
 // ResetConnectionOptions resets all connection options to defaults
 func ResetConnectionOptions() {
-	customSNI = "deepseek.com"
+	customSNI = "speed.cloudflare.com"
 	customEndpoint = ""
 	useHTTP2 = false
 	log.Println("Connection options reset to defaults")
