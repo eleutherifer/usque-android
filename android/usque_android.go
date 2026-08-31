@@ -423,6 +423,11 @@ func runSingleAttempt(
 			state.mu.Unlock()
 		},
 		OnConnectFunc: func() {
+			if useHttp2 {
+				atomic.StoreInt32(&activeTransportIsHttp2, 1)
+			} else {
+				atomic.StoreInt32(&activeTransportIsHttp2, 0)
+			}
 			if onConnect != nil {
 				onConnect()
 			}
@@ -803,6 +808,22 @@ func SetTransportPolicy(policy string) {
 
 func GetTransportPolicy() string {
 	return transportPolicy
+}
+
+// activeTransportIsHttp2 хранит, какой транспорт РЕАЛЬНО используется прямо
+// сейчас (0 = HTTP/3, 1 = HTTP/2) — в отличие от transportPolicy, которая
+// хранит лишь настроенную стратегию ("auto"/"http3"/"http2"). Обновляется
+// в момент успешного подключения в runSingleAttempt.
+var activeTransportIsHttp2 int32
+
+// GetActiveTransport возвращает фактически используемый транспорт ("http3"
+// или "http2") — полезно для отображения в UI при выбранной политике "auto",
+// где сама политика не говорит, что именно сейчас подключено.
+func GetActiveTransport() string {
+	if atomic.LoadInt32(&activeTransportIsHttp2) == 1 {
+		return "http2"
+	}
+	return "http3"
 }
 
 func GetLicenseKey(configPath string) string {
